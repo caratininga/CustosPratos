@@ -21,15 +21,6 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs };
-    </script>
-
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
         .cmv-green { color: #16a34a; background-color: #dcfce7; }
@@ -38,10 +29,47 @@
         /* Animation for logs */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .log-entry { animation: fadeIn 0.3s ease-out; }
+        #root:empty::before { content: 'Carregando sistema...'; display: block; padding: 20px; text-align: center; color: #666; }
     </style>
+
+    <!-- Error Handling -->
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            console.error("Global Error:", error);
+            return false;
+        };
+    </script>
 </head>
 <body>
     <div id="root"></div>
+
+    <!-- Firebase Configuration & Init -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose to global window object securely
+        window.firebaseModules = { 
+            initializeApp, 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged, 
+            signInWithCustomToken,
+            getFirestore, 
+            collection, 
+            addDoc, 
+            onSnapshot, 
+            doc, 
+            updateDoc, 
+            deleteDoc, 
+            writeBatch, 
+            getDocs 
+        };
+
+        // Dispatch event to signal Firebase is ready
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
@@ -76,6 +104,8 @@
             const [dishes, setDishes] = useState([]);
             const [selectedDish, setSelectedDish] = useState(null);
             const [loading, setLoading] = useState(true);
+            const [authWarning, setAuthWarning] = useState('');
+            const [errorMsg, setErrorMsg] = useState(''); // Declarado novamente
 
             // Firebase refs
             const [db, setDb] = useState(null);
@@ -83,38 +113,89 @@
 
             useEffect(() => {
                 const initFirebase = async () => {
-                    const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore } = window.firebaseModules;
-                    
-                    const configRaw = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-                    const config = JSON.parse(configRaw);
+                    try {
+                        if (!window.firebaseModules) {
+                            await new Promise(resolve => window.addEventListener('firebase-ready', resolve, { once: true }));
+                        }
 
-                    const app = initializeApp(config);
-                    const auth = getAuth(app);
-                    const firestore = getFirestore(app);
-                    
-                    setDb(firestore);
-                    setAppId(typeof __app_id !== 'undefined' ? __app_id : 'default-app');
+                        const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore } = window.firebaseModules;
+                        
+                        const config = {
+                            apiKey: "AIzaSyDiop3HwQsmvU6RNNQmxPUOJ2qj2zGAyCs",
+                            authDomain: "custospratos.firebaseapp.com",
+                            projectId: "custospratos",
+                            storageBucket: "custospratos.firebasestorage.app",
+                            messagingSenderId: "715914461934",
+                            appId: "1:715914461934:web:db0b2fb6ee562b652a29ff",
+                            measurementId: "G-GNRKTZNZXN"
+                        };
 
-                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        const app = initializeApp(config);
+                        const auth = getAuth(app);
+                        const firestore = getFirestore(app);
+                        
+                        setDb(firestore);
+                        setAppId('custos-pratos-web'); 
 
-                    if (token) await signInWithCustomToken(auth, token);
-                    else await signInAnonymously(auth);
+                        // TENTATIVA DE LOGIN COM FALLBACK
+                        try {
+                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                await signInWithCustomToken(auth, __initial_auth_token);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (authError) {
+                            console.warn("Autenticação falhou:", authError);
+                            // Se falhar a autenticação (ex: Anonymous não ativado), cria um usuário local
+                            // para permitir que o app funcione (sem salvar no banco real ou salvando localmente se implementado)
+                            setAuthWarning('Aviso: Login Anônimo não habilitado no Firebase. Usando modo local temporário.');
+                            const mockUser = { uid: "local-user-" + Math.floor(Math.random() * 10000) };
+                            setUser(mockUser);
+                            setLoading(false);
+                            return;
+                        }
 
-                    onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
+                        onAuthStateChanged(auth, (u) => { 
+                            if (u) setUser(u);
+                            setLoading(false); 
+                        });
+
+                    } catch (err) {
+                        console.error("Firebase Init Fatal Error:", err);
+                        // Modo de emergência para não travar tela branca
+                        setUser({ uid: "emergency-local-user" });
+                        setAuthWarning("Erro crítico no banco de dados. Modo offline ativado.");
+                        setLoading(false);
+                    }
                 };
-                initFirebase();
+                
+                setTimeout(initFirebase, 100);
             }, []);
 
             useEffect(() => {
                 if (!user || !db) return;
                 const { collection, onSnapshot } = window.firebaseModules;
 
-                const unsubIng = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients'),
-                    (snap) => setIngredients(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-                const unsubDish = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes'),
-                    (snap) => setDishes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                // Se for usuário mockado (local), não tenta conectar no banco real
+                if (user.uid.startsWith('local-') || user.uid.startsWith('emergency-')) {
+                    return;
+                }
 
-                return () => { unsubIng(); unsubDish(); };
+                try {
+                    const unsubIng = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients'),
+                        (snap) => setIngredients(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+                        (error) => console.log("Aguardando dados de ingredientes...")
+                    );
+                    
+                    const unsubDish = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes'),
+                        (snap) => setDishes(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+                        (error) => console.log("Aguardando dados de pratos...")
+                    );
+
+                    return () => { unsubIng(); unsubDish(); };
+                } catch (err) {
+                    console.log("Modo offline ou erro de conexão.");
+                }
             }, [user, db, appId]);
 
             const getIngredient = (id) => ingredients.find(i => i.id === id);
@@ -263,32 +344,45 @@
                 };
 
                 const clearData = async () => {
+                    // Se for modo local/mock, limpa apenas o estado local
+                    if (user.uid.startsWith('local-')) {
+                        setIngredients([]);
+                        setDishes([]);
+                        addLog("Dados locais limpos.", "success");
+                        return;
+                    }
+
                     const { collection, getDocs, writeBatch } = window.firebaseModules;
                     addLog("Iniciando limpeza da base de dados...", "info");
                     await yieldToMain();
                     
-                    const deleteCollection = async (path, name) => {
-                        const ref = collection(db, 'artifacts', appId, 'users', user.uid, path);
-                        const snapshot = await getDocs(ref);
-                        if (snapshot.empty) return;
-                        
-                        addLog(`Apagando ${snapshot.docs.length} itens de ${name}...`, "info");
-                        await yieldToMain();
+                    try {
+                        const deleteCollection = async (path, name) => {
+                            const ref = collection(db, 'artifacts', appId, 'users', user.uid, path);
+                            const snapshot = await getDocs(ref);
+                            if (snapshot.empty) return;
+                            
+                            addLog(`Apagando ${snapshot.docs.length} itens de ${name}...`, "info");
+                            await yieldToMain();
 
-                        const chunk = 300; 
-                        for (let i = 0; i < snapshot.docs.length; i += chunk) {
-                            const batch = writeBatch(db);
-                            snapshot.docs.slice(i, i + chunk).forEach(doc => batch.delete(doc.ref));
-                            await batch.commit();
-                            await yieldToMain(); // Breath
-                        }
-                    };
+                            const chunk = 300; 
+                            for (let i = 0; i < snapshot.docs.length; i += chunk) {
+                                const batch = writeBatch(db);
+                                snapshot.docs.slice(i, i + chunk).forEach(doc => batch.delete(doc.ref));
+                                await batch.commit();
+                                await yieldToMain(); 
+                            }
+                        };
 
-                    await Promise.all([
-                        deleteCollection('ingredients', 'Ingredientes'),
-                        deleteCollection('dishes', 'Pratos')
-                    ]);
-                    addLog("Base de dados limpa com sucesso.", "success");
+                        await Promise.all([
+                            deleteCollection('ingredients', 'Ingredientes'),
+                            deleteCollection('dishes', 'Pratos')
+                        ]);
+                        addLog("Base de dados limpa com sucesso.", "success");
+                    } catch (e) {
+                        addLog("Erro ao limpar dados (verifique permissões do Firebase): " + e.message, "error");
+                        console.error(e);
+                    }
                 };
 
                 const handleFileUpload = async (e) => {
@@ -304,7 +398,6 @@
                     setUploadComplete(false);
                     setLogs([{ msg: "Iniciando leitura do arquivo...", type: "info", time: new Date().toLocaleTimeString() }]);
                     
-                    // Important: Allow React to render the "Processing" state before reading the file
                     setTimeout(async () => {
                         const reader = new FileReader();
                         reader.onload = async (evt) => {
@@ -313,7 +406,6 @@
                                 const wb = XLSX.read(data, { type: 'array' });
                                 const { writeBatch, doc, collection } = window.firebaseModules;
                                 
-                                // Identify sheets loosely
                                 const ingSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'ingredientes');
                                 const dishesSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'pratos');
                                 const recipeSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'receitas');
@@ -326,15 +418,23 @@
 
                                 await clearData();
 
-                                let batch = writeBatch(db);
+                                // Se for usuário local, vamos apenas salvar na memória
+                                const isLocal = user.uid.startsWith('local-');
+                                let localIngredients = [];
+                                let localDishes = [];
+
+                                // Prepara variáveis de Firebase apenas se não for local
+                                let batch = isLocal ? null : writeBatch(db);
                                 let opCount = 0;
                                 
                                 const commitBatch = async () => {
-                                    addLog(`Salvando lote de ${opCount} registros...`, "info");
-                                    await batch.commit();
-                                    await yieldToMain(); // Breath
-                                    batch = writeBatch(db);
-                                    opCount = 0;
+                                    if (!isLocal) {
+                                        addLog(`Salvando lote de ${opCount} registros...`, "info");
+                                        await batch.commit();
+                                        await yieldToMain();
+                                        batch = writeBatch(db);
+                                        opCount = 0;
+                                    }
                                 };
 
                                 const tempIngMap = new Map();
@@ -352,14 +452,21 @@
                                         const price = parsePTBRNumber(row.Preco);
                                         if (!name) continue;
                                         
-                                        const id = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients')).id;
+                                        // Generate ID
+                                        const id = isLocal ? 'ing_' + Math.random().toString(36).substr(2, 9) : doc(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients')).id;
                                         const nameLC = name.toLowerCase();
                                         tempIngMap.set(nameLC, id);
                                         
-                                        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', id);
-                                        batch.set(ref, { name, price, unit: row.Unidade || 'kg', lastUpdated: new Date().toISOString() });
-                                        opCount++;
-                                        if (opCount >= 300) await commitBatch();
+                                        const data = { id, name, price, unit: row.Unidade || 'kg', lastUpdated: new Date().toISOString() };
+
+                                        if (isLocal) {
+                                            localIngredients.push(data);
+                                        } else {
+                                            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', id);
+                                            batch.set(ref, data);
+                                            opCount++;
+                                            if (opCount >= 300) await commitBatch();
+                                        }
                                     }
                                 }
 
@@ -381,20 +488,27 @@
                                             'Tianguá': parsePTBRNumber(row['Preco Tiangua'])
                                         };
 
-                                        const id = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes')).id;
+                                        const id = isLocal ? 'dish_' + Math.random().toString(36).substr(2, 9) : doc(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes')).id;
                                         const nameLC = name.toLowerCase();
                                         tempDishMap.set(nameLC, id);
                                         
-                                        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', id);
-                                        batch.set(ref, { 
+                                        const data = { 
+                                            id,
                                             name, 
                                             category: row.Categoria?.toString().trim() || 'Geral', 
                                             prices, 
                                             components: [], 
                                             createdAt: new Date().toISOString() 
-                                        });
-                                        opCount++;
-                                        if (opCount >= 300) await commitBatch();
+                                        };
+
+                                        if (isLocal) {
+                                            localDishes.push(data);
+                                        } else {
+                                            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', id);
+                                            batch.set(ref, data);
+                                            opCount++;
+                                            if (opCount >= 300) await commitBatch();
+                                        }
                                     }
                                 }
 
@@ -438,19 +552,32 @@
                                         });
 
                                         if (components.length > 0) {
-                                            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', dishId);
-                                            batch.update(ref, { components });
-                                            opCount++;
-                                            if (opCount >= 300) await commitBatch();
+                                            if (isLocal) {
+                                                const dish = localDishes.find(d => d.id === dishId);
+                                                if (dish) dish.components = components;
+                                            } else {
+                                                const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', dishId);
+                                                batch.update(ref, { components });
+                                                opCount++;
+                                                if (opCount >= 300) await commitBatch();
+                                            }
                                         }
                                         linkedCount++;
-                                        if (linkedCount % 50 === 0) await yieldToMain(); // Yield every 50 recipes
+                                        if (linkedCount % 50 === 0) await yieldToMain();
                                     }
                                 }
                                 
-                                if (opCount > 0) await commitBatch();
+                                if (!isLocal && opCount > 0) await commitBatch();
+
+                                // Update state if local
+                                if (isLocal) {
+                                    setIngredients(localIngredients);
+                                    setDishes(localDishes);
+                                    addLog("Dados salvos na memória local (atenção: dados serão perdidos ao recarregar a página).", "success");
+                                } else {
+                                    addLog("Concluído e salvo no banco de dados!", "success");
+                                }
                                 
-                                addLog("Concluído!", "success");
                                 setUploadComplete(true);
                             } catch (err) {
                                 console.error(err);
@@ -461,7 +588,7 @@
                             }
                         };
                         reader.readAsArrayBuffer(file);
-                    }, 500); // 500ms delay to ensure "Processing..." text is rendered
+                    }, 500); 
                 };
 
                 return (
@@ -484,6 +611,13 @@
 
                         <h2 className="text-2xl font-bold mb-4">Central de Importação</h2>
                         
+                        {authWarning && (
+                            <div className="bg-orange-50 border border-orange-200 p-4 rounded mb-6 text-sm text-orange-800 flex items-start">
+                                <Icon name="AlertTriangle" className="mr-2 flex-shrink-0" />
+                                <p><strong>Modo Local:</strong> {authWarning} Os dados carregados agora serão perdidos se você recarregar a página.</p>
+                            </div>
+                        )}
+
                         <div className="bg-yellow-50 border border-yellow-200 p-4 rounded mb-6 text-sm text-yellow-800 flex items-start">
                             <Icon name="AlertTriangle" className="mr-2 flex-shrink-0" />
                             <p><strong>Aviso Importante:</strong> Ao enviar uma nova planilha, todos os dados atuais serão apagados e substituídos.</p>
@@ -515,7 +649,7 @@
                         <div className="flex items-center justify-center w-full">
                             <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-blue-300 border-dashed rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 transition ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                    <Icon name="Upload" className="w-10 h-10 mb-3 text-blue-500" />
+                                    {isProcessing ? <Icon name="Loader" size={32} className="text-blue-500" /> : <Icon name="Upload" className="w-10 h-10 mb-3 text-blue-500" />}
                                     <p className="text-sm text-gray-500">{isProcessing ? 'Aguarde...' : 'Clique para enviar a planilha (.xlsx)'}</p>
                                 </div>
                                 <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isProcessing} />
@@ -704,6 +838,14 @@
             };
 
             if (loading) return <div className="flex h-screen items-center justify-center text-gray-500">Carregando...</div>;
+            if (errorMsg) return (
+                <div className="flex flex-col h-screen items-center justify-center text-red-600 p-4 text-center">
+                    <Icon name="AlertTriangle" size={48} className="mb-4" />
+                    <h2 className="text-xl font-bold mb-2">Erro de Inicialização</h2>
+                    <p>{errorMsg}</p>
+                    <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Tentar Novamente</button>
+                </div>
+            );
 
             return (
                 <div className="min-h-screen flex flex-col">
