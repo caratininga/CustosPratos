@@ -99,13 +99,13 @@
             return icons[name] || null;
         };
 
-        const UNITS = ['Matriz', 'Mucambo', 'Frecheirinha', 'Tianguá'];
+        const UNITS = ['Geral', 'Matriz', 'Mucambo', 'Frecheirinha', 'Tianguá'];
 
         // --- APP ---
         const App = () => {
             const [user, setUser] = useState(null);
             const [view, setView] = useState('dashboard'); 
-            const [selectedUnit, setSelectedUnit] = useState('Matriz'); 
+            const [selectedUnit, setSelectedUnit] = useState('Geral'); 
             const [ingredients, setIngredients] = useState([]);
             const [dishes, setDishes] = useState([]);
             const [sales, setSales] = useState([]); // Nova coleção de vendas
@@ -218,8 +218,18 @@
 
             const getDishPrice = (dish, unit) => {
                 let val = 0;
-                if (dish.prices && dish.prices[unit]) val = parseFloat(dish.prices[unit]);
-                else val = parseFloat(dish.salePrice || 0);
+                if (unit === 'Geral') {
+                    // Average price across all units
+                    const prices = UNITS.filter(u => u !== 'Geral').map(u => {
+                        return dish.prices && dish.prices[u] ? parseFloat(dish.prices[u]) : parseFloat(dish.salePrice || 0);
+                    }).filter(p => !isNaN(p) && p > 0);
+                    
+                    if (prices.length === 0) return 0;
+                    val = prices.reduce((a, b) => a + b, 0) / prices.length;
+                } else {
+                    if (dish.prices && dish.prices[unit]) val = parseFloat(dish.prices[unit]);
+                    else val = parseFloat(dish.salePrice || 0);
+                }
                 return isNaN(val) ? 0 : val;
             };
 
@@ -877,7 +887,7 @@
                         // Check Month
                         if (selectedMonth !== 'Todos' && s.month !== selectedMonth) return false;
                         // Check Unit
-                        if (s.unit !== selectedUnit) return false;
+                        if (selectedUnit !== 'Geral' && s.unit !== selectedUnit) return false;
                         return true;
                     });
                 }, [sales, selectedMonth, selectedUnit]);
@@ -888,6 +898,10 @@
                     let totalCost = 0;
                     let totalPotentialGain = 0; // Opportunity cost if CMV was ideal (e.g. 30%)
 
+                    // To consolidate sales for 'Geral', we need to aggregate by dish if multiple entries exist (e.g. same dish sold in different units)
+                    // Or simply map all sales entries and sum up.
+                    // Since details table lists items, let's keep individual sales rows but enriched.
+                    
                     const details = filteredSales.map(sale => {
                         // Find matching dish to get Cost and Price data
                         // Matching by name (case insensitive)
@@ -895,7 +909,10 @@
                         
                         if (!dish) return null;
 
-                        const dishPrice = getDishPrice(dish, selectedUnit);
+                        // For 'Geral' view in Sales, we should probably use the specific unit price recorded in the sale if we could look it up, 
+                        // OR look up the dish price for the sale's unit.
+                        // Since `getDishPrice` takes a unit, let's use the sale's unit to get accurate revenue.
+                        const dishPrice = getDishPrice(dish, sale.unit); 
                         const dishCost = calculateCost(dish.components);
                         
                         // Skip if invalid data
@@ -908,9 +925,6 @@
 
                         // Opportunity Calculation:
                         // If CMV is bad (> 30%), calculate how much profit we lost.
-                        // Ideal Cost = Price * 0.30
-                        // Lost Profit per Unit = Actual Cost - Ideal Cost
-                        // Only count if Actual Cost > Ideal Cost
                         const idealCost = dishPrice * 0.30;
                         const lostProfitPerUnit = Math.max(0, dishCost - idealCost);
                         const totalLostProfit = lostProfitPerUnit * sale.quantity;
@@ -935,7 +949,7 @@
                     details.sort((a, b) => b.totalLostProfit - a.totalLostProfit);
 
                     return { details, totalRevenue, totalCost, totalProfit: totalRevenue - totalCost, totalPotentialGain };
-                }, [filteredSales, dishes, selectedUnit]);
+                }, [filteredSales, dishes]); // removed selectedUnit dependency inside calculation logic as we use sale.unit now
 
                 return (
                     <div className="space-y-6">
@@ -982,6 +996,7 @@
                                     <thead className="bg-gray-50">
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prato</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unidade</th>
                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qtd</th>
                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Faturamento</th>
                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Lucro Real</th>
@@ -993,6 +1008,7 @@
                                         {analysis.details.map((item, idx) => (
                                             <tr key={idx} className="hover:bg-gray-50">
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.dishName}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.unit}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{item.quantity}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(item.revenue)}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 font-medium">{formatCurrency(item.profit)}</td>
@@ -1004,7 +1020,7 @@
                                         ))}
                                         {analysis.details.length === 0 && (
                                             <tr>
-                                                <td colSpan="6" className="px-6 py-12 text-center text-gray-400">
+                                                <td colSpan="7" className="px-6 py-12 text-center text-gray-400">
                                                     Nenhuma venda encontrada para este filtro ou pratos não cadastrados corretamente.
                                                 </td>
                                             </tr>
@@ -1038,6 +1054,15 @@
                 const removeIngredient = (idx) => { setSimulatedComponents(simulatedComponents.filter((_, i) => i !== idx)); setIsDirty(true); };
                 const saveChanges = async () => {
                     const { updateDoc, doc } = window.firebaseModules;
+                    // If unit is Geral, we can't save a specific price easily without ambiguity.
+                    // Let's prevent saving price if Geral is selected or warn user.
+                    // For now, let's assume if Geral, we don't update price or update all? 
+                    // Best approach: Force user to select a specific unit to audit price.
+                    if (selectedUnit === 'Geral') {
+                        alert("Por favor, selecione uma unidade específica para salvar alterações de preço.");
+                        return;
+                    }
+
                     const updatedPrices = { ...(selectedDish.prices || {}), [selectedUnit]: parseFloat(simulatedPrice) };
                     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', selectedDish.id), { components: simulatedComponents, prices: updatedPrices });
                     setIsDirty(false); setSelectedDish({ ...selectedDish, components: simulatedComponents, prices: updatedPrices });
@@ -1052,7 +1077,17 @@
                                     <div><h2 className="text-2xl font-bold text-gray-800">Auditoria: {selectedDish.name}</h2><p className="text-sm text-indigo-600 mt-1">Unidade: {selectedUnit}</p></div>
                                     <button onClick={() => setView('dishes')} className="text-gray-500">Voltar</button>
                                 </div>
-                                <div className="mb-6"><label className="block text-sm font-medium text-gray-700 mb-1">Preço Venda ({selectedUnit})</label><input type="number" className="w-full border rounded p-2 text-lg font-bold text-blue-600" value={simulatedPrice} onChange={(e) => { setSimulatedPrice(e.target.value); setIsDirty(true); }} /></div>
+                                <div className="mb-6">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Preço Venda ({selectedUnit})</label>
+                                    <input 
+                                        type="number" 
+                                        className="w-full border rounded p-2 text-lg font-bold text-blue-600 disabled:bg-gray-100 disabled:text-gray-500" 
+                                        value={simulatedPrice} 
+                                        onChange={(e) => { setSimulatedPrice(e.target.value); setIsDirty(true); }}
+                                        disabled={selectedUnit === 'Geral'}
+                                    />
+                                    {selectedUnit === 'Geral' && <p className="text-xs text-orange-500 mt-1">Selecione uma unidade específica para editar o preço.</p>}
+                                </div>
                                 <div className="space-y-4">
                                     <h3 className="font-semibold text-gray-700 border-b pb-2">Composição</h3>
                                     {simulatedComponents.map((comp, idx) => {
