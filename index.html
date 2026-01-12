@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Custos - Balneário Caratinga</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SheetJS for Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, writeBatch, getDocs };
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .cmv-green { color: #16a34a; background-color: #dcfce7; }
+        .cmv-yellow { color: #ca8a04; background-color: #fef9c3; }
+        .cmv-red { color: #dc2626; background-color: #fee2e2; }
+        /* Animation for logs */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .log-entry { animation: fadeIn 0.3s ease-out; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+        const { createRoot } = ReactDOM;
+
+        // --- ICONS ---
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const icons = {
+                Upload: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
+                ChefHat: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" x2="18" y1="17" y2="17"/></svg>,
+                Calculator: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>,
+                TrendingUp: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+                AlertTriangle: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>,
+                Save: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+                Trash2: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
+                Edit3: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>,
+                MapPin: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
+                Filter: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
+                Loader: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`animate-spin ${className}`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            };
+            return icons[name] || null;
+        };
+
+        const UNITS = ['Matriz', 'Mucambo', 'Frecheirinha', 'Tianguá'];
+
+        // --- APP ---
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [view, setView] = useState('dashboard'); 
+            const [selectedUnit, setSelectedUnit] = useState('Matriz'); 
+            const [ingredients, setIngredients] = useState([]);
+            const [dishes, setDishes] = useState([]);
+            const [selectedDish, setSelectedDish] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            // Firebase refs
+            const [db, setDb] = useState(null);
+            const [appId, setAppId] = useState(null);
+
+            useEffect(() => {
+                const initFirebase = async () => {
+                    const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore } = window.firebaseModules;
+                    
+                    const configRaw = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+                    const config = JSON.parse(configRaw);
+
+                    const app = initializeApp(config);
+                    const auth = getAuth(app);
+                    const firestore = getFirestore(app);
+                    
+                    setDb(firestore);
+                    setAppId(typeof __app_id !== 'undefined' ? __app_id : 'default-app');
+
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+                    if (token) await signInWithCustomToken(auth, token);
+                    else await signInAnonymously(auth);
+
+                    onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
+                };
+                initFirebase();
+            }, []);
+
+            useEffect(() => {
+                if (!user || !db) return;
+                const { collection, onSnapshot } = window.firebaseModules;
+
+                const unsubIng = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients'),
+                    (snap) => setIngredients(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubDish = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes'),
+                    (snap) => setDishes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+                return () => { unsubIng(); unsubDish(); };
+            }, [user, db, appId]);
+
+            const getIngredient = (id) => ingredients.find(i => i.id === id);
+            
+            const calculateCost = (components) => {
+                if (!components) return 0;
+                return components.reduce((acc, comp) => {
+                    const ing = getIngredient(comp.ingredientId);
+                    if (!ing) return acc;
+                    return acc + (ing.price * (comp.quantity || 0));
+                }, 0);
+            };
+
+            const getDishPrice = (dish, unit) => {
+                let val = 0;
+                if (dish.prices && dish.prices[unit]) val = parseFloat(dish.prices[unit]);
+                else val = parseFloat(dish.salePrice || 0);
+                return isNaN(val) ? 0 : val;
+            };
+
+            const calculateCMV = (cost, salePrice) => {
+                if (!salePrice || salePrice === 0) return 0;
+                return (cost / salePrice) * 100;
+            };
+
+            const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+            const formatPercent = (val) => new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(val / 100);
+
+            const getCMVStatus = (cmv) => {
+                if (cmv <= 30) return { color: 'text-green-700 bg-green-100', label: 'Ideal' };
+                if (cmv <= 40) return { color: 'text-yellow-700 bg-yellow-100', label: 'Atenção' };
+                return { color: 'text-red-700 bg-red-100', label: 'Crítico' };
+            };
+
+            const parsePTBRNumber = (val) => {
+                if (typeof val === 'number') return val;
+                if (typeof val === 'string') {
+                    const clean = val.replace(/[R$\s]/g, '').replace(',', '.');
+                    const num = parseFloat(clean);
+                    return isNaN(num) ? 0 : num;
+                }
+                return 0;
+            };
+
+            // --- COMPONENTS ---
+            const Dashboard = () => {
+                const totalDishes = dishes.length;
+                
+                const criticalDishesList = dishes.map(d => {
+                     const cost = calculateCost(d.components);
+                     const price = getDishPrice(d, selectedUnit);
+                     const cmv = calculateCMV(cost, price);
+                     return { ...d, cost, price, cmv };
+                }).filter(d => d.cmv > 40).sort((a, b) => b.cmv - a.cmv);
+
+                const criticalCount = criticalDishesList.length;
+
+                const validDishes = dishes.filter(d => getDishPrice(d, selectedUnit) > 0);
+                const avgCMV = validDishes.length > 0 ? validDishes.reduce((acc, d) => {
+                    const cost = calculateCost(d.components);
+                    return acc + calculateCMV(cost, getDishPrice(d, selectedUnit));
+                }, 0) / validDishes.length : 0;
+
+                return (
+                    <div className="space-y-8">
+                         <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-lg flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                                <Icon name="MapPin" className="text-indigo-600" />
+                                <span className="text-indigo-900 font-medium">Dados exibidos para unidade: <strong>{selectedUnit}</strong></span>
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                                <h3 className="text-gray-500 text-sm font-medium">Pratos Cadastrados</h3>
+                                <p className="text-3xl font-bold text-gray-800 mt-2">{totalDishes}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                                <h3 className="text-gray-500 text-sm font-medium">Pratos Críticos ({selectedUnit})</h3>
+                                <p className={`text-3xl font-bold mt-2 ${criticalCount > 0 ? 'text-red-500' : 'text-green-500'}`}>{criticalCount}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                                <h3 className="text-gray-500 text-sm font-medium">CMV Médio ({selectedUnit})</h3>
+                                <p className="text-3xl font-bold text-gray-800 mt-2">{formatPercent(avgCMV)}</p>
+                            </div>
+                        </div>
+
+                        {criticalCount > 0 && (
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                                <div className="p-4 border-b border-gray-200 bg-red-50 flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                        <Icon name="AlertTriangle" className="text-red-500" size={20} />
+                                        <h3 className="font-bold text-red-900">Pratos com Lucro Baixo (CMV &gt; 40%)</h3>
+                                    </div>
+                                    <span className="text-xs text-red-700 bg-red-100 px-2 py-1 rounded-full">Ação Necessária</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prato</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</th>
+                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Venda ({selectedUnit})</th>
+                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Custo</th>
+                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">CMV</th>
+                                                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Ação</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {criticalDishesList.map(dish => (
+                                                <tr key={dish.id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{dish.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{dish.category || 'Geral'}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(dish.price)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{formatCurrency(dish.cost)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-red-700">{dish.cmv.toFixed(1)}%</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                        <button 
+                                                            onClick={() => { setSelectedDish(dish); setView('audit'); }}
+                                                            className="text-indigo-600 hover:text-indigo-900 font-medium"
+                                                        >
+                                                            Corrigir
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            const Uploader = () => {
+                const [logs, setLogs] = useState([]);
+                const [isProcessing, setIsProcessing] = useState(false);
+                const [uploadComplete, setUploadComplete] = useState(false);
+
+                // Force layout update before blocking logic
+                const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 20));
+
+                const addLog = (msg, type = 'info') => {
+                    setLogs(prev => [...prev, { msg, type, time: new Date().toLocaleTimeString() }]);
+                };
+
+                const clearData = async () => {
+                    const { collection, getDocs, writeBatch } = window.firebaseModules;
+                    addLog("Iniciando limpeza da base de dados...", "info");
+                    await yieldToMain();
+                    
+                    const deleteCollection = async (path, name) => {
+                        const ref = collection(db, 'artifacts', appId, 'users', user.uid, path);
+                        const snapshot = await getDocs(ref);
+                        if (snapshot.empty) return;
+                        
+                        addLog(`Apagando ${snapshot.docs.length} itens de ${name}...`, "info");
+                        await yieldToMain();
+
+                        const chunk = 300; 
+                        for (let i = 0; i < snapshot.docs.length; i += chunk) {
+                            const batch = writeBatch(db);
+                            snapshot.docs.slice(i, i + chunk).forEach(doc => batch.delete(doc.ref));
+                            await batch.commit();
+                            await yieldToMain(); // Breath
+                        }
+                    };
+
+                    await Promise.all([
+                        deleteCollection('ingredients', 'Ingredientes'),
+                        deleteCollection('dishes', 'Pratos')
+                    ]);
+                    addLog("Base de dados limpa com sucesso.", "success");
+                };
+
+                const handleFileUpload = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    if(!confirm("Tem certeza? Isso apagará TODOS os dados atuais e substituirá pelos novos.")) {
+                        e.target.value = null;
+                        return;
+                    }
+
+                    setIsProcessing(true);
+                    setUploadComplete(false);
+                    setLogs([{ msg: "Iniciando leitura do arquivo...", type: "info", time: new Date().toLocaleTimeString() }]);
+                    
+                    // Important: Allow React to render the "Processing" state before reading the file
+                    setTimeout(async () => {
+                        const reader = new FileReader();
+                        reader.onload = async (evt) => {
+                            try {
+                                const data = new Uint8Array(evt.target.result);
+                                const wb = XLSX.read(data, { type: 'array' });
+                                const { writeBatch, doc, collection } = window.firebaseModules;
+                                
+                                // Identify sheets loosely
+                                const ingSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'ingredientes');
+                                const dishesSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'pratos');
+                                const recipeSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'receitas');
+
+                                if (!ingSheetName && !dishesSheetName) {
+                                    addLog("ERRO: Abas 'Ingredientes' ou 'Pratos' não encontradas.", "error");
+                                    setIsProcessing(false);
+                                    return;
+                                }
+
+                                await clearData();
+
+                                let batch = writeBatch(db);
+                                let opCount = 0;
+                                
+                                const commitBatch = async () => {
+                                    addLog(`Salvando lote de ${opCount} registros...`, "info");
+                                    await batch.commit();
+                                    await yieldToMain(); // Breath
+                                    batch = writeBatch(db);
+                                    opCount = 0;
+                                };
+
+                                const tempIngMap = new Map();
+                                const tempDishMap = new Map();
+
+                                // --- INGREDIENTES ---
+                                if (ingSheetName) {
+                                    addLog(`Lendo Ingredientes...`, "info");
+                                    await yieldToMain();
+                                    const ws = wb.Sheets[ingSheetName];
+                                    const rows = XLSX.utils.sheet_to_json(ws);
+                                    
+                                    for (const row of rows) {
+                                        const name = row.Nome?.toString().trim();
+                                        const price = parsePTBRNumber(row.Preco);
+                                        if (!name) continue;
+                                        
+                                        const id = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients')).id;
+                                        const nameLC = name.toLowerCase();
+                                        tempIngMap.set(nameLC, id);
+                                        
+                                        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', id);
+                                        batch.set(ref, { name, price, unit: row.Unidade || 'kg', lastUpdated: new Date().toISOString() });
+                                        opCount++;
+                                        if (opCount >= 300) await commitBatch();
+                                    }
+                                }
+
+                                // --- PRATOS ---
+                                if (dishesSheetName) {
+                                    addLog(`Lendo Pratos...`, "info");
+                                    await yieldToMain();
+                                    const ws = wb.Sheets[dishesSheetName];
+                                    const rows = XLSX.utils.sheet_to_json(ws);
+                                    
+                                    for (const row of rows) {
+                                        const name = row.Nome?.toString().trim();
+                                        if (!name) continue;
+                                        
+                                        const prices = {
+                                            'Matriz': parsePTBRNumber(row['Preco Matriz']),
+                                            'Mucambo': parsePTBRNumber(row['Preco Mucambo']),
+                                            'Frecheirinha': parsePTBRNumber(row['Preco Frecheirinha']),
+                                            'Tianguá': parsePTBRNumber(row['Preco Tiangua'])
+                                        };
+
+                                        const id = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes')).id;
+                                        const nameLC = name.toLowerCase();
+                                        tempDishMap.set(nameLC, id);
+                                        
+                                        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', id);
+                                        batch.set(ref, { 
+                                            name, 
+                                            category: row.Categoria?.toString().trim() || 'Geral', 
+                                            prices, 
+                                            components: [], 
+                                            createdAt: new Date().toISOString() 
+                                        });
+                                        opCount++;
+                                        if (opCount >= 300) await commitBatch();
+                                    }
+                                }
+
+                                // --- RECEITAS ---
+                                if (recipeSheetName) {
+                                    addLog(`Vinculando Receitas...`, "info");
+                                    await yieldToMain();
+                                    const ws = wb.Sheets[recipeSheetName];
+                                    const rawData = XLSX.utils.sheet_to_json(ws);
+                                    const recipeGroups = {};
+
+                                    rawData.forEach(row => {
+                                        const dName = row.Prato?.toString().trim();
+                                        const iName = row.Ingrediente?.toString().trim();
+                                        const qtyRaw = row.Quantidade;
+                                        if (!dName || !iName || !qtyRaw) return;
+
+                                        const dNameLC = dName.toLowerCase();
+                                        if (!recipeGroups[dNameLC]) recipeGroups[dNameLC] = [];
+                                        recipeGroups[dNameLC].push({ iName, qtyRaw });
+                                    });
+
+                                    let linkedCount = 0;
+                                    for (const [dNameLC, comps] of Object.entries(recipeGroups)) {
+                                        const dishId = tempDishMap.get(dNameLC);
+                                        if (!dishId) continue;
+
+                                        const components = [];
+                                        comps.forEach(c => {
+                                            const iNameLC = c.iName.toLowerCase();
+                                            const ingId = tempIngMap.get(iNameLC);
+                                            if (ingId) {
+                                                let qty = 0;
+                                                const valStr = c.qtyRaw.toString().toLowerCase().replace(',', '.');
+                                                if (valStr.endsWith('g') && !valStr.endsWith('kg')) qty = parseFloat(valStr) / 1000;
+                                                else if (valStr.endsWith('ml')) qty = parseFloat(valStr) / 1000;
+                                                else qty = parseFloat(valStr);
+
+                                                if (!isNaN(qty)) components.push({ ingredientId: ingId, quantity: qty });
+                                            }
+                                        });
+
+                                        if (components.length > 0) {
+                                            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', dishId);
+                                            batch.update(ref, { components });
+                                            opCount++;
+                                            if (opCount >= 300) await commitBatch();
+                                        }
+                                        linkedCount++;
+                                        if (linkedCount % 50 === 0) await yieldToMain(); // Yield every 50 recipes
+                                    }
+                                }
+                                
+                                if (opCount > 0) await commitBatch();
+                                
+                                addLog("Concluído!", "success");
+                                setUploadComplete(true);
+                            } catch (err) {
+                                console.error(err);
+                                addLog(`ERRO FATAL: ${err.message}`, "error");
+                            } finally {
+                                setIsProcessing(false);
+                                e.target.value = null;
+                            }
+                        };
+                        reader.readAsArrayBuffer(file);
+                    }, 500); // 500ms delay to ensure "Processing..." text is rendered
+                };
+
+                return (
+                    <div className="bg-white p-8 rounded-lg shadow max-w-5xl mx-auto relative">
+                        {isProcessing && (
+                            <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center rounded-lg">
+                                <Icon name="Loader" size={48} className="text-blue-600 mb-4" />
+                                <p className="text-xl font-bold text-gray-800">Processando arquivo...</p>
+                                <p className="text-sm text-gray-500 mb-4">Por favor, aguarde e não feche a página.</p>
+                                <div className="w-full max-w-md bg-gray-100 rounded h-32 overflow-y-auto p-2 border border-gray-300 font-mono text-xs">
+                                    {logs.map((log, i) => (
+                                        <div key={i} className={`mb-1 ${log.type === 'error' ? 'text-red-600' : 'text-gray-600'}`}>
+                                            {log.msg}
+                                        </div>
+                                    ))}
+                                    <div ref={(el) => el && el.scrollIntoView({ behavior: "smooth" })}></div>
+                                </div>
+                            </div>
+                        )}
+
+                        <h2 className="text-2xl font-bold mb-4">Central de Importação</h2>
+                        
+                        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded mb-6 text-sm text-yellow-800 flex items-start">
+                            <Icon name="AlertTriangle" className="mr-2 flex-shrink-0" />
+                            <p><strong>Aviso Importante:</strong> Ao enviar uma nova planilha, todos os dados atuais serão apagados e substituídos.</p>
+                        </div>
+
+                        {uploadComplete && !isProcessing && (
+                            <div className="mb-6 bg-green-50 border border-green-200 p-4 rounded text-green-800 flex items-center justify-between">
+                                <span>Importação concluída com sucesso!</span>
+                                <button onClick={() => setView('dishes')} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold">
+                                    Ver Cardápio
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                            <div className="bg-blue-50 p-4 rounded border border-blue-100">
+                                <h3 className="font-bold text-blue-800 mb-2">Aba 1: "Ingredientes"</h3>
+                                <ul className="list-disc list-inside text-xs text-gray-600"><li>Nome</li><li>Preco</li><li>Unidade</li></ul>
+                            </div>
+                            <div className="bg-indigo-50 p-4 rounded border border-indigo-100">
+                                <h3 className="font-bold text-indigo-800 mb-2">Aba 2: "Pratos"</h3>
+                                <ul className="list-disc list-inside text-xs text-gray-600"><li>Nome</li><li>Categoria</li><li>Preco Matriz...</li></ul>
+                            </div>
+                            <div className="bg-green-50 p-4 rounded border border-green-100">
+                                <h3 className="font-bold text-green-800 mb-2">Aba 3: "Receitas"</h3>
+                                <ul className="list-disc list-inside text-xs text-gray-600"><li>Prato</li><li>Ingrediente</li><li>Quantidade</li></ul>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-center w-full">
+                            <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-blue-300 border-dashed rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 transition ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                    <Icon name="Upload" className="w-10 h-10 mb-3 text-blue-500" />
+                                    <p className="text-sm text-gray-500">{isProcessing ? 'Aguarde...' : 'Clique para enviar a planilha (.xlsx)'}</p>
+                                </div>
+                                <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isProcessing} />
+                            </label>
+                        </div>
+                    </div>
+                );
+            };
+
+            const DishManager = () => {
+                const [newDishName, setNewDishName] = useState('');
+                const [selectedCategory, setSelectedCategory] = useState('Todas');
+                
+                // Sort by category alphabetically
+                const categories = useMemo(() => ['Todas', ...Array.from(new Set(dishes.map(d => d.category || 'Geral'))).sort()], [dishes]);
+                
+                // Filter and Sort by Category then Name
+                const filteredDishes = useMemo(() => {
+                    let list = selectedCategory === 'Todas' ? dishes : dishes.filter(d => (d.category || 'Geral') === selectedCategory);
+                    return list.sort((a, b) => {
+                        const catA = (a.category || 'Geral').toLowerCase();
+                        const catB = (b.category || 'Geral').toLowerCase();
+                        if (catA < catB) return -1;
+                        if (catA > catB) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                }, [dishes, selectedCategory]);
+
+                const createDish = async () => {
+                    if (!newDishName) return;
+                    const { addDoc, collection } = window.firebaseModules;
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'dishes'), {
+                        name: newDishName, category: 'Geral', prices: { 'Matriz': 0, 'Mucambo': 0, 'Frecheirinha': 0, 'Tianguá': 0 }, components: [], createdAt: new Date().toISOString()
+                    });
+                    setNewDishName('');
+                };
+
+                const deleteDish = async (id) => { if(confirm('Excluir prato?')) { const { deleteDoc, doc } = window.firebaseModules; await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', id)); }};
+
+                return (
+                    <div className="space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm gap-4">
+                            <h2 className="text-xl font-bold text-gray-800">Cardápio ({selectedUnit})</h2>
+                            <select className="border rounded px-2 py-2 text-sm bg-gray-50" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                            <div className="flex space-x-2 w-full md:w-auto">
+                                <input type="text" placeholder="Novo prato..." className="border rounded px-3 py-2 text-sm flex-1" value={newDishName} onChange={(e) => setNewDishName(e.target.value)} />
+                                <button onClick={createDish} className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">+ Adicionar</button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                             <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prato</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Venda ({selectedUnit})</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Custo</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">CMV %</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Lucro R$</th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {filteredDishes.map((dish, index) => {
+                                            const cost = calculateCost(dish.components);
+                                            const price = getDishPrice(dish, selectedUnit);
+                                            const cmv = calculateCMV(cost, price);
+                                            const status = getCMVStatus(cmv);
+                                            const profit = price - cost;
+                                            const hasComponents = dish.components && dish.components.length > 0;
+
+                                            return (
+                                                <tr key={dish.id} className="hover:bg-gray-50 transition">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{dish.category || 'Geral'}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{dish.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatCurrency(price)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{formatCurrency(cost)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                         {hasComponents && price > 0 ? (
+                                                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${status.color}`}>
+                                                                {cmv.toFixed(1)}%
+                                                            </span>
+                                                         ) : <span className="text-gray-300">--</span>}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 text-right font-medium">
+                                                        {formatCurrency(profit)}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                        <div className="flex justify-center space-x-2">
+                                                            <button 
+                                                                onClick={() => { setSelectedDish(dish); setView('audit'); }}
+                                                                className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 p-1.5 rounded"
+                                                                title="Auditar"
+                                                            >
+                                                                <Icon name="Edit3" size={16} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => deleteDish(dish.id)}
+                                                                className="text-red-600 hover:text-red-900 bg-red-50 p-1.5 rounded"
+                                                                title="Excluir"
+                                                            >
+                                                                <Icon name="Trash2" size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const Auditor = () => {
+                if (!selectedDish) return null;
+                const [simulatedComponents, setSimulatedComponents] = useState([...selectedDish.components]);
+                const initialPrice = getDishPrice(selectedDish, selectedUnit);
+                const [simulatedPrice, setSimulatedPrice] = useState(initialPrice);
+                const [isDirty, setIsDirty] = useState(false);
+                const originalCost = calculateCost(selectedDish.components);
+                const simCost = calculateCost(simulatedComponents);
+                const simCMV = calculateCMV(simCost, simulatedPrice);
+                const status = getCMVStatus(simCMV);
+
+                const handleWeightChange = (index, val) => { 
+                    const u = [...simulatedComponents]; 
+                    u[index].quantity = val === '' ? '' : parseFloat(val); 
+                    setSimulatedComponents(u); 
+                    setIsDirty(true); 
+                };
+                const addIngredient = (e) => { const id = e.target.value; if(!id) return; setSimulatedComponents([...simulatedComponents, { ingredientId: id, quantity: 0 }]); setIsDirty(true); e.target.value = ""; };
+                const removeIngredient = (idx) => { setSimulatedComponents(simulatedComponents.filter((_, i) => i !== idx)); setIsDirty(true); };
+                const saveChanges = async () => {
+                    const { updateDoc, doc } = window.firebaseModules;
+                    const updatedPrices = { ...(selectedDish.prices || {}), [selectedUnit]: parseFloat(simulatedPrice) };
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dishes', selectedDish.id), { components: simulatedComponents, prices: updatedPrices });
+                    setIsDirty(false); setSelectedDish({ ...selectedDish, components: simulatedComponents, prices: updatedPrices });
+                    alert(`Salvo para ${selectedUnit}!`);
+                };
+
+                return (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 space-y-6">
+                            <div className="bg-white p-6 rounded-lg shadow-sm">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div><h2 className="text-2xl font-bold text-gray-800">Auditoria: {selectedDish.name}</h2><p className="text-sm text-indigo-600 mt-1">Unidade: {selectedUnit}</p></div>
+                                    <button onClick={() => setView('dishes')} className="text-gray-500">Voltar</button>
+                                </div>
+                                <div className="mb-6"><label className="block text-sm font-medium text-gray-700 mb-1">Preço Venda ({selectedUnit})</label><input type="number" className="w-full border rounded p-2 text-lg font-bold text-blue-600" value={simulatedPrice} onChange={(e) => { setSimulatedPrice(e.target.value); setIsDirty(true); }} /></div>
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-gray-700 border-b pb-2">Composição</h3>
+                                    {simulatedComponents.map((comp, idx) => {
+                                        const ing = getIngredient(comp.ingredientId);
+                                        if (!ing) return null;
+                                        return (
+                                            <div key={idx} className="flex items-center space-x-4 bg-gray-50 p-3 rounded">
+                                                <div className="flex-1"><p className="font-medium text-gray-800">{ing.name}</p><p className="text-xs text-gray-500">R$ {ing.price}/{ing.unit}</p></div>
+                                                <div className="w-32"><label className="text-xs text-gray-500">Qtd ({ing.unit})</label><input type="number" step="0.001" className="w-full border rounded p-1 text-right" value={comp.quantity} onChange={(e) => handleWeightChange(idx, e.target.value)} /></div>
+                                                <div className="w-24 text-right font-medium text-gray-700">{formatCurrency(ing.price * (comp.quantity || 0))}</div>
+                                                <button onClick={() => removeIngredient(idx)} className="text-red-400"><Icon name="Trash2" size={16} /></button>
+                                            </div>
+                                        );
+                                    })}
+                                    <div className="mt-4 pt-4 border-t border-dashed"><select className="w-full border rounded p-2" onChange={addIngredient} defaultValue=""><option value="" disabled>+ Adicionar Ingrediente</option>{ingredients.map(ing => <option key={ing.id} value={ing.id}>{ing.name}</option>)}</select></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-6">
+                            <div className="bg-white p-6 rounded-lg shadow-lg border border-indigo-100 sticky top-4">
+                                <h3 className="text-lg font-bold text-indigo-900 mb-4 flex items-center"><Icon name="Calculator" className="mr-2" />Simulador</h3>
+                                <div className="space-y-3 text-sm">
+                                    <div className="flex justify-between"><span>Custo Total</span><span className={`font-bold ${simCost < originalCost ? 'text-green-600' : 'text-gray-800'}`}>{formatCurrency(simCost)}</span></div>
+                                    <div className="flex justify-between"><span>CMV %</span><span className={`font-bold ${status.color.split(' ')[0]}`}>{simCMV.toFixed(1)}%</span></div>
+                                </div>
+                                <div className={`mt-6 p-4 rounded text-center ${status.color}`}><p className="text-xs uppercase font-bold">Status</p><p className="text-2xl font-bold">{status.label}</p></div>
+                                <div className="mt-6 space-y-2"><button onClick={saveChanges} disabled={!isDirty} className={`w-full py-3 rounded-lg font-bold shadow ${isDirty ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-400'}`}>Salvar</button></div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            if (loading) return <div className="flex h-screen items-center justify-center text-gray-500">Carregando...</div>;
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <header className="bg-white border-b sticky top-0 z-10">
+                        <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+                            <div className="flex items-center space-x-2 text-indigo-600 cursor-pointer" onClick={() => setView('dashboard')}><Icon name="ChefHat" size={28} /><span className="font-bold text-xl hidden md:inline">Balneário Caratinga</span></div>
+                            <div className="flex items-center space-x-2 mx-4"><Icon name="MapPin" size={16} className="text-gray-400" /><select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="bg-gray-50 border border-gray-300 text-sm rounded-lg p-2">{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
+                            <nav className="flex space-x-2"><button onClick={() => setView('dashboard')} className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-indigo-600">Dash</button><button onClick={() => setView('dishes')} className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-indigo-600">Pratos</button><button onClick={() => setView('upload')} className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-indigo-600">Dados</button></nav>
+                        </div>
+                    </header>
+                    <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">{view === 'dashboard' && <Dashboard />}{view === 'upload' && <Uploader />}{view === 'dishes' && <DishManager />}{view === 'audit' && <Auditor />}</main>
+                    <footer className="bg-white border-t mt-auto py-6"><div className="max-w-7xl mx-auto px-4 text-center text-gray-400 text-sm"><p>Balneário Caratinga - MG</p></div></footer>
+                </div>
+            );
+        };
+        const root = createRoot(document.getElementById('root')); root.render(<App />);
+    </script>
+</body>
+</html>
