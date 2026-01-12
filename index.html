@@ -30,6 +30,8 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .log-entry { animation: fadeIn 0.3s ease-out; }
         #root:empty::before { content: 'Carregando sistema...'; display: block; padding: 20px; text-align: center; color: #666; }
+        th { cursor: pointer; user-select: none; }
+        th:hover { background-color: #f3f4f6; }
     </style>
 
     <!-- Error Handling -->
@@ -88,7 +90,11 @@
                 Edit3: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>,
                 MapPin: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
                 Filter: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
-                Loader: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`animate-spin ${className}`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                Loader: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`animate-spin ${className}`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
+                ArrowUp: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m18 15-6-6-6 6"/></svg>,
+                ArrowDown: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 9 6 6 6-6"/></svg>,
+                DollarSign: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+                BarChart: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
             };
             return icons[name] || null;
         };
@@ -102,10 +108,11 @@
             const [selectedUnit, setSelectedUnit] = useState('Matriz'); 
             const [ingredients, setIngredients] = useState([]);
             const [dishes, setDishes] = useState([]);
+            const [sales, setSales] = useState([]); // Nova coleção de vendas
             const [selectedDish, setSelectedDish] = useState(null);
             const [loading, setLoading] = useState(true);
             const [authWarning, setAuthWarning] = useState('');
-            const [errorMsg, setErrorMsg] = useState(''); // Declarado novamente
+            const [errorMsg, setErrorMsg] = useState('');
 
             // Firebase refs
             const [db, setDb] = useState(null);
@@ -137,7 +144,6 @@
                         setDb(firestore);
                         setAppId('custos-pratos-web'); 
 
-                        // TENTATIVA DE LOGIN COM FALLBACK
                         try {
                             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                                 await signInWithCustomToken(auth, __initial_auth_token);
@@ -146,8 +152,6 @@
                             }
                         } catch (authError) {
                             console.warn("Autenticação falhou:", authError);
-                            // Se falhar a autenticação (ex: Anonymous não ativado), cria um usuário local
-                            // para permitir que o app funcione (sem salvar no banco real ou salvando localmente se implementado)
                             setAuthWarning('Aviso: Login Anônimo não habilitado no Firebase. Usando modo local temporário.');
                             const mockUser = { uid: "local-user-" + Math.floor(Math.random() * 10000) };
                             setUser(mockUser);
@@ -162,7 +166,6 @@
 
                     } catch (err) {
                         console.error("Firebase Init Fatal Error:", err);
-                        // Modo de emergência para não travar tela branca
                         setUser({ uid: "emergency-local-user" });
                         setAuthWarning("Erro crítico no banco de dados. Modo offline ativado.");
                         setLoading(false);
@@ -176,7 +179,6 @@
                 if (!user || !db) return;
                 const { collection, onSnapshot } = window.firebaseModules;
 
-                // Se for usuário mockado (local), não tenta conectar no banco real
                 if (user.uid.startsWith('local-') || user.uid.startsWith('emergency-')) {
                     return;
                 }
@@ -192,7 +194,12 @@
                         (error) => console.log("Aguardando dados de pratos...")
                     );
 
-                    return () => { unsubIng(); unsubDish(); };
+                    const unsubSales = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'sales'),
+                        (snap) => setSales(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+                        (error) => console.log("Aguardando dados de vendas...")
+                    );
+
+                    return () => { unsubIng(); unsubDish(); unsubSales(); };
                 } catch (err) {
                     console.log("Modo offline ou erro de conexão.");
                 }
@@ -348,6 +355,7 @@
                     if (user.uid.startsWith('local-')) {
                         setIngredients([]);
                         setDishes([]);
+                        setSales([]);
                         addLog("Dados locais limpos.", "success");
                         return;
                     }
@@ -376,7 +384,8 @@
 
                         await Promise.all([
                             deleteCollection('ingredients', 'Ingredientes'),
-                            deleteCollection('dishes', 'Pratos')
+                            deleteCollection('dishes', 'Pratos'),
+                            deleteCollection('sales', 'Vendas')
                         ]);
                         addLog("Base de dados limpa com sucesso.", "success");
                     } catch (e) {
@@ -409,6 +418,7 @@
                                 const ingSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'ingredientes');
                                 const dishesSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'pratos');
                                 const recipeSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'receitas');
+                                const salesSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'vendas');
 
                                 if (!ingSheetName && !dishesSheetName) {
                                     addLog("ERRO: Abas 'Ingredientes' ou 'Pratos' não encontradas.", "error");
@@ -422,6 +432,7 @@
                                 const isLocal = user.uid.startsWith('local-');
                                 let localIngredients = [];
                                 let localDishes = [];
+                                let localSales = [];
 
                                 // Prepara variáveis de Firebase apenas se não for local
                                 let batch = isLocal ? null : writeBatch(db);
@@ -452,7 +463,6 @@
                                         const price = parsePTBRNumber(row.Preco);
                                         if (!name) continue;
                                         
-                                        // Generate ID
                                         const id = isLocal ? 'ing_' + Math.random().toString(36).substr(2, 9) : doc(collection(db, 'artifacts', appId, 'users', user.uid, 'ingredients')).id;
                                         const nameLC = name.toLowerCase();
                                         tempIngMap.set(nameLC, id);
@@ -566,6 +576,41 @@
                                         if (linkedCount % 50 === 0) await yieldToMain();
                                     }
                                 }
+
+                                // --- VENDAS ---
+                                if (salesSheetName) {
+                                    addLog(`Processando Vendas...`, "info");
+                                    await yieldToMain();
+                                    const ws = wb.Sheets[salesSheetName];
+                                    const rows = XLSX.utils.sheet_to_json(ws);
+                                    
+                                    for (const row of rows) {
+                                        const dishName = row.Prato?.toString().trim();
+                                        const qty = parseFloat(row.Quantidade);
+                                        const unit = row.Unidade?.toString().trim();
+                                        const month = row.Mes?.toString().trim();
+
+                                        if (!dishName || !qty || !unit) continue;
+                                        
+                                        const data = { 
+                                            dishName, 
+                                            quantity: qty, 
+                                            unit, 
+                                            month: month || 'Geral',
+                                            timestamp: new Date().toISOString()
+                                        };
+
+                                        if (isLocal) {
+                                            localSales.push(data);
+                                        } else {
+                                            const id = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'sales')).id;
+                                            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'sales', id);
+                                            batch.set(ref, data);
+                                            opCount++;
+                                            if (opCount >= 300) await commitBatch();
+                                        }
+                                    }
+                                }
                                 
                                 if (!isLocal && opCount > 0) await commitBatch();
 
@@ -573,6 +618,7 @@
                                 if (isLocal) {
                                     setIngredients(localIngredients);
                                     setDishes(localDishes);
+                                    setSales(localSales);
                                     addLog("Dados salvos na memória local (atenção: dados serão perdidos ao recarregar a página).", "success");
                                 } else {
                                     addLog("Concluído e salvo no banco de dados!", "success");
@@ -626,24 +672,33 @@
                         {uploadComplete && !isProcessing && (
                             <div className="mb-6 bg-green-50 border border-green-200 p-4 rounded text-green-800 flex items-center justify-between">
                                 <span>Importação concluída com sucesso!</span>
-                                <button onClick={() => setView('dishes')} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold">
-                                    Ver Cardápio
-                                </button>
+                                <div className="space-x-2">
+                                    <button onClick={() => setView('dishes')} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold">
+                                        Ver Cardápio
+                                    </button>
+                                    <button onClick={() => setView('sales')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm font-bold">
+                                        Ver Análise de Vendas
+                                    </button>
+                                </div>
                             </div>
                         )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                             <div className="bg-blue-50 p-4 rounded border border-blue-100">
-                                <h3 className="font-bold text-blue-800 mb-2">Aba 1: "Ingredientes"</h3>
+                                <h3 className="font-bold text-blue-800 mb-2">1: "Ingredientes"</h3>
                                 <ul className="list-disc list-inside text-xs text-gray-600"><li>Nome</li><li>Preco</li><li>Unidade</li></ul>
                             </div>
                             <div className="bg-indigo-50 p-4 rounded border border-indigo-100">
-                                <h3 className="font-bold text-indigo-800 mb-2">Aba 2: "Pratos"</h3>
+                                <h3 className="font-bold text-indigo-800 mb-2">2: "Pratos"</h3>
                                 <ul className="list-disc list-inside text-xs text-gray-600"><li>Nome</li><li>Categoria</li><li>Preco Matriz...</li></ul>
                             </div>
                             <div className="bg-green-50 p-4 rounded border border-green-100">
-                                <h3 className="font-bold text-green-800 mb-2">Aba 3: "Receitas"</h3>
+                                <h3 className="font-bold text-green-800 mb-2">3: "Receitas"</h3>
                                 <ul className="list-disc list-inside text-xs text-gray-600"><li>Prato</li><li>Ingrediente</li><li>Quantidade</li></ul>
+                            </div>
+                            <div className="bg-purple-50 p-4 rounded border border-purple-100">
+                                <h3 className="font-bold text-purple-800 mb-2">4: "Vendas" (Novo)</h3>
+                                <ul className="list-disc list-inside text-xs text-gray-600"><li>Prato</li><li>Quantidade</li><li>Unidade</li><li>Mes</li></ul>
                             </div>
                         </div>
                         <div className="flex items-center justify-center w-full">
@@ -662,21 +717,64 @@
             const DishManager = () => {
                 const [newDishName, setNewDishName] = useState('');
                 const [selectedCategory, setSelectedCategory] = useState('Todas');
+                // Sorting State: { key: 'name' | 'price' | 'cost' | 'cmv' | 'profit', direction: 'asc' | 'desc' | null }
+                const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
                 
                 // Sort by category alphabetically
                 const categories = useMemo(() => ['Todas', ...Array.from(new Set(dishes.map(d => d.category || 'Geral'))).sort()], [dishes]);
                 
-                // Filter and Sort by Category then Name
-                const filteredDishes = useMemo(() => {
+                // Process Data for Table
+                const processedDishes = useMemo(() => {
+                    // 1. Filter
                     let list = selectedCategory === 'Todas' ? dishes : dishes.filter(d => (d.category || 'Geral') === selectedCategory);
-                    return list.sort((a, b) => {
-                        const catA = (a.category || 'Geral').toLowerCase();
-                        const catB = (b.category || 'Geral').toLowerCase();
-                        if (catA < catB) return -1;
-                        if (catA > catB) return 1;
-                        return a.name.localeCompare(b.name);
+                    
+                    // 2. Map necessary fields for sorting
+                    const mapped = list.map(d => {
+                        const cost = calculateCost(d.components);
+                        const price = getDishPrice(d, selectedUnit);
+                        const cmv = calculateCMV(cost, price);
+                        const profit = price - cost;
+                        return { ...d, cost, price, cmv, profit };
                     });
-                }, [dishes, selectedCategory]);
+
+                    // 3. Sort
+                    if (sortConfig.key) {
+                        mapped.sort((a, b) => {
+                            if (a[sortConfig.key] < b[sortConfig.key]) {
+                                return sortConfig.direction === 'asc' ? -1 : 1;
+                            }
+                            if (a[sortConfig.key] > b[sortConfig.key]) {
+                                return sortConfig.direction === 'asc' ? 1 : -1;
+                            }
+                            return 0;
+                        });
+                    } else {
+                        // Default sort: Category then Name
+                        mapped.sort((a, b) => {
+                            const catA = (a.category || 'Geral').toLowerCase();
+                            const catB = (b.category || 'Geral').toLowerCase();
+                            if (catA < catB) return -1;
+                            if (catA > catB) return 1;
+                            return a.name.localeCompare(b.name);
+                        });
+                    }
+                    return mapped;
+                }, [dishes, selectedCategory, selectedUnit, sortConfig]);
+
+                const requestSort = (key) => {
+                    let direction = 'asc';
+                    if (sortConfig.key === key) {
+                        if (sortConfig.direction === 'asc') direction = 'desc';
+                        else if (sortConfig.direction === 'desc') direction = null; // Neutral
+                    }
+                    setSortConfig({ key: direction ? key : null, direction: direction ? direction : null });
+                };
+
+                const getSortIcon = (key) => {
+                    if (sortConfig.key !== key) return <div className="w-4 h-4 opacity-0 group-hover:opacity-30 inline-block align-middle ml-1"><Icon name="ArrowUp" size={14}/></div>;
+                    if (sortConfig.direction === 'asc') return <div className="w-4 h-4 inline-block align-middle ml-1 text-indigo-600"><Icon name="ArrowUp" size={14}/></div>;
+                    return <div className="w-4 h-4 inline-block align-middle ml-1 text-indigo-600"><Icon name="ArrowDown" size={14}/></div>;
+                };
 
                 const createDish = async () => {
                     if (!newDishName) return;
@@ -705,39 +803,35 @@
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prato</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Venda ({selectedUnit})</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Custo</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">CMV %</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Lucro R$</th>
+                                            <th onClick={() => requestSort('category')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider group">Categoria {getSortIcon('category')}</th>
+                                            <th onClick={() => requestSort('name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider group">Prato {getSortIcon('name')}</th>
+                                            <th onClick={() => requestSort('price')} className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider group">Venda ({selectedUnit}) {getSortIcon('price')}</th>
+                                            <th onClick={() => requestSort('cost')} className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider group">Custo {getSortIcon('cost')}</th>
+                                            <th onClick={() => requestSort('cmv')} className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider group">CMV % {getSortIcon('cmv')}</th>
+                                            <th onClick={() => requestSort('profit')} className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider group">Lucro R$ {getSortIcon('profit')}</th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
-                                        {filteredDishes.map((dish, index) => {
-                                            const cost = calculateCost(dish.components);
-                                            const price = getDishPrice(dish, selectedUnit);
-                                            const cmv = calculateCMV(cost, price);
-                                            const status = getCMVStatus(cmv);
-                                            const profit = price - cost;
+                                        {processedDishes.map((dish, index) => {
+                                            const status = getCMVStatus(dish.cmv);
                                             const hasComponents = dish.components && dish.components.length > 0;
 
                                             return (
                                                 <tr key={dish.id} className="hover:bg-gray-50 transition">
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{dish.category || 'Geral'}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{dish.name}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatCurrency(price)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{formatCurrency(cost)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatCurrency(dish.price)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{formatCurrency(dish.cost)}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                         {hasComponents && price > 0 ? (
+                                                         {hasComponents && dish.price > 0 ? (
                                                             <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${status.color}`}>
-                                                                {cmv.toFixed(1)}%
+                                                                {dish.cmv.toFixed(1)}%
                                                             </span>
                                                          ) : <span className="text-gray-300">--</span>}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 text-right font-medium">
-                                                        {formatCurrency(profit)}
+                                                        {formatCurrency(dish.profit)}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                         <div className="flex justify-center space-x-2">
@@ -760,6 +854,161 @@
                                                 </tr>
                                             );
                                         })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const SalesManager = () => {
+                const [selectedMonth, setSelectedMonth] = useState('Todos');
+
+                // Get Unique Months from Sales Data
+                const months = useMemo(() => {
+                    const m = new Set(sales.map(s => s.month || 'Geral'));
+                    return ['Todos', ...Array.from(m).sort()];
+                }, [sales]);
+
+                // Filter Sales by Month and Unit
+                const filteredSales = useMemo(() => {
+                    return sales.filter(s => {
+                        // Check Month
+                        if (selectedMonth !== 'Todos' && s.month !== selectedMonth) return false;
+                        // Check Unit
+                        if (s.unit !== selectedUnit) return false;
+                        return true;
+                    });
+                }, [sales, selectedMonth, selectedUnit]);
+
+                // Analyze Data
+                const analysis = useMemo(() => {
+                    let totalRevenue = 0;
+                    let totalCost = 0;
+                    let totalPotentialGain = 0; // Opportunity cost if CMV was ideal (e.g. 30%)
+
+                    const details = filteredSales.map(sale => {
+                        // Find matching dish to get Cost and Price data
+                        // Matching by name (case insensitive)
+                        const dish = dishes.find(d => d.name.toLowerCase() === sale.dishName.toLowerCase());
+                        
+                        if (!dish) return null;
+
+                        const dishPrice = getDishPrice(dish, selectedUnit);
+                        const dishCost = calculateCost(dish.components);
+                        
+                        // Skip if invalid data
+                        if (dishPrice <= 0 || dishCost <= 0) return null;
+
+                        const revenue = dishPrice * sale.quantity;
+                        const cost = dishCost * sale.quantity;
+                        const profit = revenue - cost;
+                        const cmv = (dishCost / dishPrice) * 100;
+
+                        // Opportunity Calculation:
+                        // If CMV is bad (> 30%), calculate how much profit we lost.
+                        // Ideal Cost = Price * 0.30
+                        // Lost Profit per Unit = Actual Cost - Ideal Cost
+                        // Only count if Actual Cost > Ideal Cost
+                        const idealCost = dishPrice * 0.30;
+                        const lostProfitPerUnit = Math.max(0, dishCost - idealCost);
+                        const totalLostProfit = lostProfitPerUnit * sale.quantity;
+
+                        totalRevenue += revenue;
+                        totalCost += cost;
+                        totalPotentialGain += totalLostProfit;
+
+                        return {
+                            ...sale,
+                            dishPrice,
+                            dishCost,
+                            revenue,
+                            cost,
+                            profit,
+                            cmv,
+                            totalLostProfit
+                        };
+                    }).filter(Boolean);
+
+                    // Sort by highest opportunity gain (where we are losing money)
+                    details.sort((a, b) => b.totalLostProfit - a.totalLostProfit);
+
+                    return { details, totalRevenue, totalCost, totalProfit: totalRevenue - totalCost, totalPotentialGain };
+                }, [filteredSales, dishes, selectedUnit]);
+
+                return (
+                    <div className="space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm gap-4">
+                            <h2 className="text-xl font-bold text-gray-800">Análise de Vendas ({selectedUnit})</h2>
+                            <div className="flex items-center space-x-2">
+                                <span className="text-sm text-gray-500">Mês:</span>
+                                <select className="border rounded px-2 py-2 text-sm bg-gray-50" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>{months.map(m => <option key={m} value={m}>{m}</option>)}</select>
+                            </div>
+                        </div>
+
+                        {/* KPI Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+                                <p className="text-xs font-semibold text-gray-500 uppercase">Faturamento Real</p>
+                                <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(analysis.totalRevenue)}</p>
+                            </div>
+                            <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+                                <p className="text-xs font-semibold text-gray-500 uppercase">Custo Real (Insumos)</p>
+                                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(analysis.totalCost)}</p>
+                            </div>
+                            <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+                                <p className="text-xs font-semibold text-gray-500 uppercase">Lucro Real</p>
+                                <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(analysis.totalProfit)}</p>
+                            </div>
+                            <div className="bg-yellow-50 p-5 rounded-lg shadow-sm border border-yellow-200 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-2 opacity-10"><Icon name="TrendingUp" size={48} /></div>
+                                <p className="text-xs font-semibold text-yellow-800 uppercase flex items-center">
+                                    <Icon name="AlertTriangle" size={12} className="mr-1"/> Oportunidade de Ganho
+                                </p>
+                                <p className="text-2xl font-bold text-yellow-700 mt-1">{formatCurrency(analysis.totalPotentialGain)}</p>
+                                <p className="text-[10px] text-yellow-600 mt-1">Dinheiro "perdido" por CMV acima de 30%</p>
+                            </div>
+                        </div>
+
+                        {/* Analysis Table */}
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                                <h3 className="font-bold text-gray-700">Detalhamento por Prato</h3>
+                                <span className="text-xs text-gray-400">Ordenado por Custo de Oportunidade (Onde você perde mais)</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prato</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qtd</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Faturamento</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Lucro Real</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">CMV Atual</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase text-yellow-700 bg-yellow-50">Ganho Potencial</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {analysis.details.map((item, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.dishName}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{item.quantity}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">{formatCurrency(item.revenue)}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 font-medium">{formatCurrency(item.profit)}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{item.cmv.toFixed(1)}%</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-yellow-700 bg-yellow-50">
+                                                    {item.totalLostProfit > 0 ? `+ ${formatCurrency(item.totalLostProfit)}` : '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {analysis.details.length === 0 && (
+                                            <tr>
+                                                <td colSpan="6" className="px-6 py-12 text-center text-gray-400">
+                                                    Nenhuma venda encontrada para este filtro ou pratos não cadastrados corretamente.
+                                                </td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -853,10 +1102,15 @@
                         <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
                             <div className="flex items-center space-x-2 text-indigo-600 cursor-pointer" onClick={() => setView('dashboard')}><Icon name="ChefHat" size={28} /><span className="font-bold text-xl hidden md:inline">Balneário Caratinga</span></div>
                             <div className="flex items-center space-x-2 mx-4"><Icon name="MapPin" size={16} className="text-gray-400" /><select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="bg-gray-50 border border-gray-300 text-sm rounded-lg p-2">{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
-                            <nav className="flex space-x-2"><button onClick={() => setView('dashboard')} className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-indigo-600">Dash</button><button onClick={() => setView('dishes')} className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-indigo-600">Pratos</button><button onClick={() => setView('upload')} className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-indigo-600">Dados</button></nav>
+                            <nav className="flex space-x-2">
+                                <button onClick={() => setView('dashboard')} className={`px-3 py-2 text-sm font-medium ${view === 'dashboard' ? 'text-indigo-600 bg-indigo-50 rounded-md' : 'text-gray-600 hover:text-indigo-600'}`}>Dash</button>
+                                <button onClick={() => setView('sales')} className={`px-3 py-2 text-sm font-medium ${view === 'sales' ? 'text-indigo-600 bg-indigo-50 rounded-md' : 'text-gray-600 hover:text-indigo-600'}`}>Análise</button>
+                                <button onClick={() => setView('dishes')} className={`px-3 py-2 text-sm font-medium ${view === 'dishes' ? 'text-indigo-600 bg-indigo-50 rounded-md' : 'text-gray-600 hover:text-indigo-600'}`}>Pratos</button>
+                                <button onClick={() => setView('upload')} className={`px-3 py-2 text-sm font-medium ${view === 'upload' ? 'text-indigo-600 bg-indigo-50 rounded-md' : 'text-gray-600 hover:text-indigo-600'}`}>Dados</button>
+                            </nav>
                         </div>
                     </header>
-                    <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">{view === 'dashboard' && <Dashboard />}{view === 'upload' && <Uploader />}{view === 'dishes' && <DishManager />}{view === 'audit' && <Auditor />}</main>
+                    <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">{view === 'dashboard' && <Dashboard />}{view === 'upload' && <Uploader />}{view === 'dishes' && <DishManager />}{view === 'sales' && <SalesManager />}{view === 'audit' && <Auditor />}</main>
                     <footer className="bg-white border-t mt-auto py-6"><div className="max-w-7xl mx-auto px-4 text-center text-gray-400 text-sm"><p>Balneário Caratinga - MG</p></div></footer>
                 </div>
             );
